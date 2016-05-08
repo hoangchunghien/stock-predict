@@ -32,7 +32,7 @@ def normalize_data(df):
 
 
 def get_rolling_std(values, window):
-    return pd.rolling_std(values, window=window)
+    return values.rolling(window=window).std()
 
 
 def get_bollinger_bands(rm, rstd):
@@ -42,19 +42,29 @@ def get_bollinger_bands(rm, rstd):
 
 
 def compute_macd(df):
-    ema1 = pd.ewma(df, span=12)
-    ema2 = pd.ewma(df, span=26)
+    ema1 = df.ewm(span=12).mean()
+    ema2 = df.ewm(span=26).mean()
     macd = ema1 - ema2
-    signal = pd.ewma(macd, span=9)
+    signal = macd.ewm(span=9).mean()
     histogram = macd - signal
     return macd, signal, histogram
 
 
 def compute_stochastic_oscillator(values, window):
-    l, h = pd.rolling_min(values, window=window), pd.rolling_max(values, window=window)
+    l, h = values.rolling(window=window).min(), values.rolling(window=window).max()
     k = 100 * (values - l) / (h - l)
-    d = pd.rolling_mean(k, window=3)
+    d = k.rolling(window=3).mean()
     return k, d
+
+
+def compute_rsi(values, n):
+    dup, ddown = values.copy(), values.copy()
+    dup[dup < 0] = 0
+    ddown[ddown > 0] = 0
+    rolup = dup.rolling(n).mean()
+    roldown = ddown.rolling(n).mean().abs()
+    RS = rolup / roldown
+    return 100 - 100 / (1 + RS)
 
 
 def compute_daily_returns(df):

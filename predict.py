@@ -12,25 +12,26 @@ from util import get_bollinger_bands, get_rolling_std, compute_macd
 PARAMS = {
     'days_price_changed': 2,
     'predict_time': 5,
-    'volatility_tw': 10,
+    'volatility_tw': 15,
     'bollinger_band': 20,
     'stochastic_oscillator': 14,
 }
-NUM_DAYS = 5  # How many days to display from the nearest date
+LAST_N_DAYS = 5
 
 
-def run_test():
-    df = pd.read_csv('HOSE/CTD.CSV', delimiter='|')
+def prepare_train_data(symbol):
+    df = pd.read_csv('HOSE/{}.CSV'.format(symbol), delimiter='|')
 
     close = df['Close'].copy()
     closed_past = close.shift(PARAMS['days_price_changed'])
     df['Open'] = (df['Open'] - closed_past)
     df['High'] = (df['High'] - closed_past)
     df['Low'] = (df['Low'] - closed_past)
-    df['Volatility'] = pd.rolling_std(df['Close'], window=PARAMS['volatility_tw'])
-    df['RollingMean'] = pd.rolling_mean(df['Close'], window=PARAMS['bollinger_band'])
+    df['Volatility'] = df['Close'].rolling(window=PARAMS['volatility_tw']).std()
+    df['RollingMean'] = df['Close'].rolling(window=PARAMS['bollinger_band']).mean()
     df['UpperBand'], df['LowerBand'] = get_bollinger_bands(df['RollingMean'], get_rolling_std(df['Close'],
                                                                                               PARAMS['bollinger_band']))
+
     df['MACD'], df['MACDSignal'], df['MACDHistogram'] = compute_macd(df['Close'])
     df['%K'], df['%D'] = util.compute_stochastic_oscillator(df['Close'], PARAMS['stochastic_oscillator'])
 
@@ -40,55 +41,51 @@ def run_test():
             'Close',
             'RollingMean', 'UpperBand', 'LowerBand',
             'MACD', 'MACDSignal',
-            '%K', '%D'
+            '%K', '%D',
             ]].ix[ignore_first_ndays:]
-    predict_records = X.tail(NUM_DAYS).as_matrix()
-    # print predict_records
-
     # print X
     y = (close.shift(-PARAMS['predict_time']) - close).apply(lambda x: -1 if x <= 0 else 1)
     y = y.ix[ignore_first_ndays:]
+    X = X.ix[:len(y) - PARAMS['predict_time']]
+    y = y.ix[:len(y) - PARAMS['predict_time']]
+    return X, y, df.tail(LAST_N_DAYS)
 
-    X = X.ix[:len(y) - PARAMS['predict_time']].as_matrix()
-    y = y.ix[:len(y) - PARAMS['predict_time']].as_matrix()
 
-    x_train, x_test, y_train, y_test = train_test_split(X, y, test_size=0.15, random_state=44)
+def run_test():
+    symbols = [
+        'CTD', 'VNM', 'BMP', 'SKG', 'DRH', 'HSG', 'HPG', 'BVH', 'VIC', 'CAV'
+    ]
 
-    # clf = LinearRegression(normalize=True)
-    # clf.fit(x_train, y_train)
-    # print "------------"
-    # print "LinearRegression: {:.2f}%".format(clf.score(x_test, y_test) * 100)
-    # print "Predict {}".format(clf.predict(predict_records))
+    for symbol in symbols:
+        print "-----------------------------"
+        print "Predicting {}".format(symbol)
+        X, y, last_n_records = prepare_train_data(symbol)
+        predict_records = X.tail(5)
 
-    clf = KNeighborsClassifier(n_neighbors=3)
-    clf.fit(x_train, y_train)
-    print "------------"
-    print "KNeighborsClassifier: {:.2f}%".format(clf.score(x_test, y_test) * 100)
-    print "Predict {}".format(clf.predict(predict_records))
+        x_train, x_test, y_train, y_test = train_test_split(X.as_matrix(), y.as_matrix(), test_size=0.15,
+                                                            random_state=44)
 
-    clf = RandomForestClassifier(n_estimators=1000, n_jobs=-1)
-    clf.fit(x_train, y_train)
-    print "------------"
-    print "RandomForest: {:.2f}%".format(clf.score(x_test, y_test) * 100)
-    print "Predict {}".format(clf.predict(predict_records))
+        algorithms = [
+            KNeighborsClassifier(n_neighbors=3),
+            RandomForestClassifier(n_estimators=1000, n_jobs=-1),
+            SVC(),
+            AdaBoostClassifier(),
+            GradientBoostingClassifier(n_estimators=100),
+            # LinearRegression(normalize=True),
+        ]
 
-    clf = SVC()
-    clf.fit(x_train, y_train)
-    print "------------"
-    print "SupportVectorMachine: {:.2f}%".format(clf.score(x_test, y_test) * 100)
-    print "Predict {}".format(clf.predict(predict_records))
-
-    clf = AdaBoostClassifier()
-    clf.fit(x_train, y_train)
-    print "------------"
-    print "AdaBoostClassifier: {:.2f}%".format(clf.score(x_test, y_test) * 100)
-    print "Predict {}".format(clf.predict(predict_records))
-
-    clf = GradientBoostingClassifier(n_estimators=100)
-    clf.fit(x_train, y_train)
-    print "------------"
-    print "GradientBoostingClassifier: {:.2f}%".format(clf.score(x_test, y_test) * 100)
-    print "Predict {}".format(clf.predict(predict_records))
+        predicted_results = []
+        for algo in algorithms:
+            clf = algo
+            clf.fit(x_train, y_train)
+            predict_score = clf.score(x_test, y_test)
+            predicted_result = clf.predict(predict_records.as_matrix())
+            predicted_result = [x * predict_score for x in predicted_result]
+            predicted_results.append(predicted_result)
+        scores = np.matrix(predicted_results).sum(axis=0).tolist()[0]
+        dates = last_n_records['Date'].as_matrix()
+        for i in range(LAST_N_DAYS):
+            print "{}: {:.2f}".format(dates[i], scores[i])
 
 
 if __name__ == '__main__':
