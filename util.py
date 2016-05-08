@@ -50,6 +50,13 @@ def compute_macd(df):
     return macd, signal, histogram
 
 
+def compute_stochastic_oscillator(values, window):
+    l, h = pd.rolling_min(values, window=window), pd.rolling_max(values, window=window)
+    k = 100 * (values - l) / (h - l)
+    d = pd.rolling_mean(k, window=3)
+    return k, d
+
+
 def compute_daily_returns(df):
     daily_return = (df / df.shift(1)) - 1
     daily_return.ix[0, :] = 0

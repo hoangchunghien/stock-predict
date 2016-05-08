@@ -6,13 +6,15 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import LinearRegression
 from sklearn.linear_model import Lasso
 from sklearn.svm import SVC
+import util
 from util import get_bollinger_bands, get_rolling_std, compute_macd
 
 PARAMS = {
     'days_price_changed': 2,
-    'predict_time': 5,  # In days
-    'volatility_tw': 10,  # In days
-    'bollinger_band': 20,  # In days
+    'predict_time': 5,
+    'volatility_tw': 10,
+    'bollinger_band': 20,
+    'stochastic_oscillator': 14,
 }
 NUM_DAYS = 5  # How many days to display from the nearest date
 
@@ -30,13 +32,16 @@ def run_test():
     df['UpperBand'], df['LowerBand'] = get_bollinger_bands(df['RollingMean'], get_rolling_std(df['Close'],
                                                                                               PARAMS['bollinger_band']))
     df['MACD'], df['MACDSignal'], df['MACDHistogram'] = compute_macd(df['Close'])
-    df['Close'] = (df['Close'] - closed_past)
-    # df['Volume'] = (df['Volume'] - df['Volume'].shift(PARAMS['days_price_changed']))
+    df['%K'], df['%D'] = util.compute_stochastic_oscillator(df['Close'], PARAMS['stochastic_oscillator'])
 
     ignore_first_ndays = max(PARAMS['volatility_tw'], PARAMS['days_price_changed'], PARAMS['bollinger_band'])
-    X = df[['Open', 'High', 'Low', 'Volume', 'Volatility', 'Close',
+    X = df[['Volume',
+            'Volatility',
+            'Close',
             'RollingMean', 'UpperBand', 'LowerBand',
-            'MACD', 'MACDSignal', 'MACDHistogram']].ix[ignore_first_ndays:]
+            'MACD', 'MACDSignal',
+            '%K', '%D'
+            ]].ix[ignore_first_ndays:]
     predict_records = X.tail(NUM_DAYS).as_matrix()
     # print predict_records
 

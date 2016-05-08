@@ -25,6 +25,8 @@ __pycache__/
 env/
 build/
 develop-eggs/
+/HOSE
+/ml4t
 dist/
 downloads/
 eggs/
